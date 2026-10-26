@@ -100,17 +100,19 @@ def read_log(path: Path) -> list[Row]:
     return drop_repeats(sorted(rows, key=lambda r: r.t))
 
 
-DATE_FORMATS = [f"{day}{sep}%H:%M:%S{ms}" for day in ("%d.%m.%Y", "%Y-%m-%d") for sep in (" ", "T") for ms in (".%f", "")]
-
-
 def timestamp(text: str | None) -> datetime | None:
-    """DarknessBot and EUC Remote write `dd.MM.yyyy HH:mm:ss.SSS`; ISO dates and a `T` separator are accepted too."""
-    for form in DATE_FORMATS:
+    """DarknessBot and EUC Remote write `dd.MM.yyyy HH:mm:ss.SSS`; a `T` separator, no milliseconds and ISO dates
+    are accepted too."""
+    text = (text or "").replace("T", " ", 1)
+    for form in ("%d.%m.%Y %H:%M:%S.%f", "%d.%m.%Y %H:%M:%S"):
         try:
-            return datetime.strptime(text or "", form)
+            return datetime.strptime(text, form)
         except ValueError:
             pass
-    return None
+    try:
+        return datetime.fromisoformat(text).replace(tzinfo=None)  # the wall clock, as in the other forms
+    except ValueError:
+        return None
 
 
 def drop_repeats(rows: list[Row]) -> list[Row]:
