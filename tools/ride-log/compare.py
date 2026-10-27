@@ -43,6 +43,8 @@ GAP_S = 1.0  # a longer step between two rows is a hole in the log
 GRADE_SPAN_S = 10.0  # the slope comes from GPS altitude over this much time on each side of a window
 MAX_GRADE = 0.15  # steeper GPS slopes are noise
 MIN_SCALE_KMH = 15.0  # rows slower than this do not count for the GPS / shown ratio
+SCALE_RANGE = (0.5, 1.5)  # a true / shown ratio outside this is a bad GPS column, not a wheel
+MIN_SPAN_SHARE = 0.6  # a window's samples must cover this share of its length (a 2 s window: 1.2 s)
 
 
 @dataclass(frozen=True)
@@ -170,8 +172,14 @@ def calibrate(rows: list[Row], scale: float | None = None) -> tuple[list[Row], f
     gps = [q.gps if q else None for q in shift]
     alt = [q.alt if q else None for q in shift]
     if scale is None:
-        ratios = [g / r.kmh for r, g in zip(rows, gps) if g is not None and r.kmh >= MIN_SCALE_KMH]
+        moving = [(r, g) for r, g in zip(rows, gps) if g is not None and r.kmh >= MIN_SCALE_KMH]
+        ratios = [g / r.kmh for r, g in moving if g > 0]
+        if moving and not ratios:
+            raise ValueError("GPS speed is 0 while the wheel moves: no true / shown ratio; set --speed-scale")
         scale = statistics.median(ratios) if ratios else 1.0
+        if not SCALE_RANGE[0] <= scale <= SCALE_RANGE[1]:
+            raise ValueError(f"measured true / shown speed {scale:.3f} is outside {SCALE_RANGE}: check the GPS "
+                             "speed column or set --speed-scale")
     return [replace(r, kmh=r.kmh * scale, gps=g, alt=a) for r, g, a in zip(rows, gps, alt)], lag, scale
 
 
@@ -199,7 +207,7 @@ def windows(rows: list[Row], window_s: float, span_kmh: float, min_kmh: float, m
         if max(speeds) - min(speeds) > span_kmh or mean < min_kmh:
             continue
         t0, t1 = group[0].t, group[-1].t
-        if t1 <= t0:
+        if t1 - t0 < MIN_SPAN_SHARE * window_s:
             continue
         power = statistics.fmean(r.volts * r.amps for r in group)
         slope = grade((t0 + t1) / 2) if mass is not None else None
@@ -291,17 +299,28 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--svg", type=Path, help="also write a plot")
     args = ap.parse_args(argv)
 
-    rows, lag, scale = calibrate(read_log(args.log), args.speed_scale)
+    try:
+        rows, lag, scale = calibrate(read_log(args.log), args.speed_scale)
+        sim_rows = read_sim(args.sim) if args.sim else None
+    except ValueError as why:
+        print(f"error: {why}", file=sys.stderr)
+        return 2
     log_windows = windows(rows, args.window, args.span, args.min_speed, args.mass)
     if args.mass and not any(r.alt is not None for r in rows):
         print("note: the log has no Altitude column, so there is no slope and no flat power")
     print(f"log: {len(rows)} rows, {len(log_windows)} steady windows; GPS lag {lag:.2f} s; "
           f"true / shown speed {scale:.3f}")
+    if not log_windows:
+        print("error: no steady windows in the log; nothing to compare", file=sys.stderr)
+        return 1
     log = bands(log_windows, args.band)
     sim = None
-    if args.sim:
-        sim_windows = windows(read_sim(args.sim), args.window, args.span, args.min_speed, args.mass)
+    if sim_rows is not None:
+        sim_windows = windows(sim_rows, args.window, args.span, args.min_speed, args.mass)
         print(f"run: {len(sim_windows)} steady windows")
+        if not sim_windows:
+            print("error: no steady windows in the run; nothing to compare", file=sys.stderr)
+            return 1
         sim = bands(sim_windows, args.band)
     rows_out = table(log, sim, args.band)
     print("| " + " | ".join(rows_out[0]) + " |")

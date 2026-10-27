@@ -101,7 +101,7 @@ m_eff, crr, CdA, R and P0 within 0.1 %, 12 %, 2 %, 0 % and 1 % of their true val
    | --- | --- | --- | --- | --- | --- | --- |
    | 20-25 | 26.0 % | 24.0 % | 3.10 A | 2.20 A | −0.90 A | −98 W |
    | 40-45 | 44.8 % | 44.0 % | 10.79 A | 7.67 A | −3.11 A | −302 W |
-   | 50-55 | 55.3 % | 53.8 % | 13.87 A | 12.72 A | −1.15 A | −109 W |
+   | 50-55 | 55.7 % | 53.8 % | 14.07 A | 12.72 A | −1.35 A | −109 W |
    | 55-60 | 59.8 % | 59.1 % | 18.05 A | 16.22 A | −1.83 A | −164 W |
 
    The simulated rider is the default rider, not the rider of the log; on a level, steady cruise the mass changes the

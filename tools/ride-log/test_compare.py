@@ -137,6 +137,37 @@ class CompareTests(unittest.TestCase):
         self.assertEqual([r.t for r in rows], [0.0, 0.5, 1.0])
         self.assertEqual([r.gps for r in rows], [None] * 3)
 
+    def test_zero_gps_speed_while_moving_is_refused(self) -> None:
+        text = self.log.read_text().splitlines()
+        rows = [line.rsplit(",", 2) for line in text[1:]]
+        self.log.write_text("\n".join([text[0], *(f"{a},0.00,{alt}" for a, _, alt in rows)]) + "\n")
+        with self.assertRaisesRegex(ValueError, "GPS speed is 0"):
+            compare.calibrate(compare.read_log(self.log))
+        with contextlib.redirect_stderr(io.StringIO()) as err, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(compare.main([str(self.log)]), 2)
+        self.assertIn("--speed-scale", err.getvalue())
+
+    def test_an_implausible_scale_is_refused(self) -> None:
+        text = self.log.read_text().splitlines()
+        rows = [line.rsplit(",", 2) for line in text[1:]]
+        self.log.write_text("\n".join([text[0], *(f"{a},{float(g) * 3:.2f},{alt}" for a, g, alt in rows)]) + "\n")
+        with self.assertRaisesRegex(ValueError, "outside"):
+            compare.calibrate(compare.read_log(self.log))
+
+    def test_a_window_needs_a_time_span_not_only_samples(self) -> None:
+        rows = [compare.Row(t, 30.0, 128.0 + i * 0.1, 30.0, 6.0) for i, t in enumerate((0.0, 0.25, 0.5))]
+        self.assertEqual(compare.windows(rows, 2.0, 2.0, 15.0, None), [])
+        rows += [compare.Row(t, 30.0, 129.0 + i * 0.1, 30.0, 6.0) for i, t in enumerate((0.75, 1.0, 1.25))]
+        self.assertEqual(len(compare.windows(rows, 2.0, 2.0, 15.0, None)), 1)  # 1.25 s of 2 s: enough
+
+    def test_no_steady_windows_is_an_error(self) -> None:
+        put(self.log, ["Date", "Speed", "Voltage", "PWM", "Current"],
+            [[f"01.01.2026 10:00:{i // 4:02d}.{i % 4 * 250:03d}", "0", f"{128 + i % 2 * 0.1:.1f}", "0", "-1"]
+             for i in range(200)])
+        with contextlib.redirect_stderr(io.StringIO()) as err, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(compare.main([str(self.log)]), 1)
+        self.assertIn("no steady windows", err.getvalue())
+
     def test_missing_columns_are_named(self) -> None:
         self.log.write_text("Date,Speed\n01.01.2026 10:00:00.000,1\n")
         with self.assertRaisesRegex(ValueError, "Current"):

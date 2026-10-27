@@ -29,9 +29,11 @@ current, a ratio) belong in a pull request. The same holds for `--mass` when it 
 
 1. Drops the rows that repeat the previous row (the apps resend the last frame; 15 % of the rows in a 30-minute test log).
 2. Measures the GPS delay against the wheel's speed (0-5 s; about 1.5-2 s in that log) and the true / shown speed ratio from
-   GPS (`--speed-scale` sets it by hand; the Begode Extreme shows about 1.105 × the true speed).
+   GPS (`--speed-scale` sets it by hand; the Begode Extreme shows about 1.105 × the true speed). GPS speed 0 while
+   the wheel moves, or a ratio outside 0.5-1.5, stops the tool with an error.
 3. Keeps non-overlapping windows (`--window`, 2 s) whose speed range is at most `--span` (2 km/h) above
-   `--min-speed` (15 km/h true). A window with a hole of more than 1 s in the log is dropped.
+   `--min-speed` (15 km/h true). A window with a hole of more than 1 s in the log, or whose samples cover less than
+   60 % of its length, is dropped.
 4. With `--mass` (rider + wheel + gear): the battery power minus `m·(a + g·slope)·v`, the power of a flat, steady
    cruise. The slope comes from the GPS altitude change over ± 10 s; slopes above 15 % are dropped as GPS noise.
 5. Prints one row per `--band` (5 km/h of true speed): medians of PWM, voltage, current and flat power, and with
